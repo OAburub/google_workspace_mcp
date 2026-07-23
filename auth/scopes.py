@@ -69,6 +69,11 @@ TASKS_READONLY_SCOPE = "https://www.googleapis.com/auth/tasks.readonly"
 CONTACTS_SCOPE = "https://www.googleapis.com/auth/contacts"
 CONTACTS_READONLY_SCOPE = "https://www.googleapis.com/auth/contacts.readonly"
 
+# Google People Directory scope — resolve domain coworkers' names by user ID
+# (needed to turn Chat users/{id} into a display name for people who are not in
+# the caller's personal contacts).
+DIRECTORY_READONLY_SCOPE = "https://www.googleapis.com/auth/directory.readonly"
+
 # Google Custom Search API scope
 CUSTOM_SEARCH_SCOPE = "https://www.googleapis.com/auth/cse"
 
@@ -169,6 +174,7 @@ CHAT_SCOPES = [
     CHAT_SPACES_READONLY_SCOPE,
     CHAT_MEMBERSHIPS_READONLY_SCOPE,
     CONTACTS_READONLY_SCOPE,
+    DIRECTORY_READONLY_SCOPE,
 ]
 
 SHEETS_SCOPES = [SHEETS_READONLY_SCOPE, SHEETS_WRITE_SCOPE, DRIVE_READONLY_SCOPE]
@@ -227,6 +233,7 @@ TOOL_READONLY_SCOPES_MAP = {
         CHAT_SPACES_READONLY_SCOPE,
         CHAT_MEMBERSHIPS_READONLY_SCOPE,
         CONTACTS_READONLY_SCOPE,
+        DIRECTORY_READONLY_SCOPE,
     ],
     "forms": [FORMS_BODY_READONLY_SCOPE, FORMS_RESPONSES_READONLY_SCOPE],
     "slides": [SLIDES_READONLY_SCOPE],

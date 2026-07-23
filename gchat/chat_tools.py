@@ -17,7 +17,11 @@ from mcp.types import ToolAnnotations
 
 # Auth & server utilities
 from auth.google_auth import get_authenticated_google_service
-from auth.scopes import CHAT_MEMBERSHIPS_READONLY_SCOPE, CONTACTS_READONLY_SCOPE
+from auth.scopes import (
+    CHAT_MEMBERSHIPS_READONLY_SCOPE,
+    CONTACTS_READONLY_SCOPE,
+    DIRECTORY_READONLY_SCOPE,
+)
 from auth.service_decorator import require_google_service, require_multiple_services
 from core.server import server
 from core.utils import TransientNetworkError, handle_http_errors
@@ -101,6 +105,68 @@ def _person_display_and_email(person: dict, fallback: str) -> Tuple[str, Optiona
     return display_name or email or fallback, email
 
 
+# Cached map of the Workspace domain directory: users/{id} -> {display_name, email}.
+# Populated lazily via People API listDirectoryPeople (requires directory.readonly).
+_domain_directory_cache: Dict[str, dict] = {}
+_domain_directory_loaded = False
+
+
+async def _get_domain_directory_map(people_service) -> Dict[str, dict]:
+    """Return a cached map of domain users (users/{id} -> profile) from the
+    Workspace directory.
+
+    This is the fallback that lets coworkers who are NOT in the caller's personal
+    contacts resolve to a real name instead of a raw ``users/{id}``. Requires the
+    ``directory.readonly`` scope; on any failure it degrades to an empty map so
+    callers simply fall back to the raw ID (never raises).
+    """
+    global _domain_directory_loaded
+    if _domain_directory_loaded:
+        return _domain_directory_cache
+    if not people_service:
+        return {}
+    page_token = None
+    try:
+        while True:
+            kwargs = {
+                "readMask": "names,emailAddresses",
+                "sources": ["DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE"],
+                "pageSize": 1000,
+            }
+            if page_token:
+                kwargs["pageToken"] = page_token
+            response = await asyncio.to_thread(
+                people_service.people().listDirectoryPeople(**kwargs).execute
+            )
+            for person in response.get("people", []):
+                resource_name = person.get("resourceName", "")
+                if not resource_name:
+                    continue
+                dir_user_id = resource_name.replace("people/", "users/", 1)
+                display_name, email = _person_display_and_email(person, dir_user_id)
+                _domain_directory_cache[dir_user_id] = {
+                    "display_name": display_name,
+                    "email": email,
+                }
+            page_token = response.get("nextPageToken")
+            if not page_token:
+                break
+        # Only treat the directory as "loaded" once it actually returns profiles.
+        # Directory sharing may still be propagating; caching an empty result
+        # would wedge resolution until the next process restart.
+        if _domain_directory_cache:
+            _domain_directory_loaded = True
+        logger.info(
+            "[dm-resolve] domain directory loaded: %d profiles",
+            len(_domain_directory_cache),
+        )
+    except HttpError as e:
+        logger.warning(f"[dm-resolve] listDirectoryPeople failed: {e}")
+    except Exception as e:
+        logger.warning(f"[dm-resolve] listDirectoryPeople unexpected error: {e!r}")
+    return _domain_directory_cache
+
+
 async def _resolve_people_batch(people_service, user_ids: List[str]) -> Dict[str, dict]:
     """Resolve Chat user IDs to People profile details in one request."""
     if not people_service or not user_ids:
@@ -126,10 +192,10 @@ async def _resolve_people_batch(people_service, user_ids: List[str]) -> Dict[str
                 .execute
             )
         except HttpError as e:
-            logger.debug(f"People API batch lookup failed for DM members: {e}")
+            logger.warning(f"[dm-resolve] getBatchGet failed: {e}")
             continue
         except Exception as e:
-            logger.debug(f"Unexpected error resolving DM members: {e}")
+            logger.warning(f"[dm-resolve] getBatchGet unexpected error: {e!r}")
             continue
 
         for item in response.get("responses", []):
@@ -138,8 +204,35 @@ async def _resolve_people_batch(people_service, user_ids: List[str]) -> Dict[str
             if not resource_name:
                 continue
             user_id = resource_name.replace("people/", "users/", 1)
+            # Skip entries with no profile data (e.g. domain coworkers who are not
+            # in the caller's personal contacts) so the directory fallback below
+            # gets a chance to resolve them to a real name.
+            if not person.get("names") and not person.get("emailAddresses"):
+                continue
             display_name, email = _person_display_and_email(person, user_id)
             resolved[user_id] = {"display_name": display_name, "email": email}
+
+    # Fallback: resolve any still-unresolved IDs from the Workspace domain
+    # directory. This is what makes non-contact coworkers show a name instead of
+    # a raw users/{id}.
+    unresolved = [uid for uid in unique_user_ids if uid not in resolved]
+    logger.info(
+        "[dm-resolve] getBatchGet resolved %d/%d; %d unresolved",
+        len(resolved),
+        len(unique_user_ids),
+        len(unresolved),
+    )
+    if unresolved:
+        directory_map = await _get_domain_directory_map(people_service)
+        before = len(resolved)
+        for uid in unresolved:
+            if uid in directory_map:
+                resolved[uid] = directory_map[uid]
+        logger.info(
+            "[dm-resolve] directory fallback resolved +%d (directory map=%d entries)",
+            len(resolved) - before,
+            len(directory_map),
+        )
 
     return resolved
 
@@ -344,7 +437,7 @@ async def list_spaces(
                 "v1",
                 "list_spaces",
                 user_google_email,
-                [CONTACTS_READONLY_SCOPE],
+                [CONTACTS_READONLY_SCOPE, DIRECTORY_READONLY_SCOPE],
             )
             dm_names = await _resolve_dm_space_names(
                 membership_chat_service,

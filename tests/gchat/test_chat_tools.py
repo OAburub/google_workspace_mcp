@@ -152,7 +152,13 @@ async def test_list_spaces_resolves_dm_names_from_memberships_and_people(monkeyp
                 "https://www.googleapis.com/auth/contacts.readonly",
             ],
         ),
-        ("people", ["https://www.googleapis.com/auth/contacts.readonly"]),
+        (
+            "people",
+            [
+                "https://www.googleapis.com/auth/contacts.readonly",
+                "https://www.googleapis.com/auth/directory.readonly",
+            ],
+        ),
     ]
     spaces_resource.members.return_value.list.assert_called_once_with(
         parent="spaces/AAA"
