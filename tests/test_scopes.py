@@ -18,6 +18,7 @@ from auth.scopes import (
     CHAT_MEMBERSHIPS_READONLY_SCOPE,
     CHAT_READONLY_SCOPE,
     CHAT_SPACES_READONLY_SCOPE,
+    CHAT_USERS_AVAILABILITY_SCOPE,
     CONTACTS_READONLY_SCOPE,
     CONTACTS_SCOPE,
     DRIVE_FILE_SCOPE,
@@ -122,6 +123,12 @@ class TestReadOnlyScopes:
         assert CHAT_MEMBERSHIPS_READONLY_SCOPE in scopes
         assert CONTACTS_READONLY_SCOPE in scopes
 
+    def test_chat_readonly_excludes_availability_scope(self):
+        """Setting your own Chat status is a write, so read-only mode leaves it out."""
+        set_read_only(True)
+        scopes = get_scopes_for_tools(["chat"])
+        assert CHAT_USERS_AVAILABILITY_SCOPE not in scopes
+
 
 class TestChatScopes:
     """Tests for Chat cross-service scope generation."""
@@ -131,6 +138,11 @@ class TestChatScopes:
         scopes = get_scopes_for_tools(["chat"])
         assert CHAT_MEMBERSHIPS_READONLY_SCOPE in scopes
         assert CONTACTS_READONLY_SCOPE in scopes
+
+    def test_chat_includes_availability_scope(self):
+        """set_chat_status and clear_chat_status need chat.users.availability."""
+        scopes = get_scopes_for_tools(["chat"])
+        assert CHAT_USERS_AVAILABILITY_SCOPE in scopes
 
 
 class TestHasRequiredScopes:
@@ -256,3 +268,11 @@ class TestGranularPermissionsScopes:
         scopes = get_scopes_for_permission("chat", "readonly")
         assert CHAT_MEMBERSHIPS_READONLY_SCOPE in scopes
         assert CONTACTS_READONLY_SCOPE in scopes
+
+    def test_chat_availability_scope_is_full_permission_only(self):
+        assert CHAT_USERS_AVAILABILITY_SCOPE in get_scopes_for_permission(
+            "chat", "full"
+        )
+        assert CHAT_USERS_AVAILABILITY_SCOPE not in get_scopes_for_permission(
+            "chat", "readonly"
+        )

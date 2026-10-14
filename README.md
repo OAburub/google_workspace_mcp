@@ -975,6 +975,8 @@ Saved files expire after 1 hour and are cleaned up automatically.
 | <sub>`search_messages`</sub> | <sub>Core</sub> | <sub>Search across chat history</sub> |
 | <sub>`create_reaction`</sub> | <sub>Core</sub> | <sub>Add emoji reaction to a message</sub> |
 | <sub>`download_chat_attachment`</sub> | <sub>Extended</sub> | <sub>Download attachment from a chat message</sub> |
+| <sub>`set_chat_status`</sub> | <sub>Extended</sub> | <sub>Set your own custom status (optionally Do not disturb); clears itself</sub> |
+| <sub>`clear_chat_status`</sub> | <sub>Extended</sub> | <sub>Clear your own custom status and end Do not disturb</sub> |
 
 <details>
 <summary>💬 <b>Chat setup — required before any Chat tool works</b></summary>

@@ -105,6 +105,8 @@ chat:
   extended:
     - list_spaces
     - download_chat_attachment
+    - set_chat_status
+    - clear_chat_status
   complete: []
 
 forms:

@@ -1,6 +1,6 @@
 # Google Chat Tools Reference
 
-MCP tools for Google Chat spaces, messages, reactions, and attachments. All tools require `user_google_email` (string, required).
+MCP tools for Google Chat spaces, messages, reactions, attachments, and your own status. All tools require `user_google_email` (string, required).
 
 ---
 
@@ -75,6 +75,31 @@ Downloads an attachment from a Chat message. Returns a local file path (stdio mo
 
 ---
 
+## Your Own Status
+
+These change only the signed-in user's availability. The Chat API cannot change anyone else's.
+
+### set_chat_status
+Sets your custom status. Google clears it by itself after `minutes`.
+
+| Parameter | Type | Required | Default | Notes |
+|-----------|------|----------|---------|-------|
+| user_google_email | string | yes | | |
+| text | string | yes | | At most 64 characters once `{back_at}` is filled in |
+| emoji_unicode | string | yes | | Literal Unicode emoji character (not a shortcode) |
+| minutes | integer | yes | | How long the status lasts; at least 1 |
+| do_not_disturb | boolean | no | false | Also turn on Do not disturb for the same duration |
+| time_zone | string | no | "UTC" | IANA name used to write `{back_at}`, e.g. `Asia/Amman` |
+
+### clear_chat_status
+Clears your custom status, and ends Do not disturb if it is on.
+
+| Parameter | Type | Required | Default | Notes |
+|-----------|------|----------|---------|-------|
+| user_google_email | string | yes | | |
+
+---
+
 ## Tips
 
 **Space IDs**: Call `list_spaces` first to discover available spaces and their IDs. You need the space ID for all message operations.
@@ -82,3 +107,5 @@ Downloads an attachment from a Chat message. Returns a local file path (stdio mo
 **Message resource names**: Messages are identified by their full resource name in the format `spaces/SPACE_ID/messages/MESSAGE_ID`. This is the value expected by `create_reaction` and `download_chat_attachment`.
 
 **Reactions**: The `emoji_unicode` parameter takes a literal Unicode emoji character (e.g. a thumbs-up character), not an emoji shortcode.
+
+**Return time in a status**: Put `{back_at}` in `set_chat_status` text, e.g. `On a break, back at {back_at}`. The server fills in the end time in `time_zone`, so the caller never needs to know the current time.

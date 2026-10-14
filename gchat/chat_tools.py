@@ -6,11 +6,13 @@ This module provides MCP tools for interacting with Google Chat API.
 
 import asyncio
 import base64
+import datetime
 import logging
 import ssl
 from typing import Dict, List, Optional, Tuple
 
 import httpx
+import pytz
 from googleapiclient.errors import HttpError
 
 from mcp.types import ToolAnnotations
@@ -24,7 +26,7 @@ from auth.scopes import (
 )
 from auth.service_decorator import require_google_service, require_multiple_services
 from core.server import server
-from core.utils import TransientNetworkError, handle_http_errors
+from core.utils import TransientNetworkError, UserInputError, handle_http_errors
 
 logger = logging.getLogger(__name__)
 
@@ -1017,3 +1019,162 @@ async def download_chat_attachment(
         f"[download_chat_attachment] Saved {size_kb:.1f} KB attachment to {result.path}"
     )
     return "\n".join(result_lines)
+
+
+# ---------------------------------------------------------------------------
+# The signed-in user's own availability: custom status and Do not disturb
+# ---------------------------------------------------------------------------
+
+# The Chat API only lets a user change their own availability, so these tools
+# never take a target user.
+_OWN_AVAILABILITY = "users/me/availability"
+_CUSTOM_STATUS_MAX_LENGTH = 64
+_BACK_AT_PLACEHOLDER = "{back_at}"
+# markAsActive with a short TTL hands presence back to activity-based tracking.
+_END_DO_NOT_DISTURB_TTL = "60s"
+
+
+def _utc_now() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+def _fill_back_at(text: str, minutes: int, time_zone: str) -> str:
+    """Replace {back_at} with the local time the status ends, e.g. 10:45 AM."""
+    if _BACK_AT_PLACEHOLDER not in text:
+        return text
+    try:
+        tz = pytz.timezone(time_zone)
+    except pytz.exceptions.UnknownTimeZoneError:
+        raise UserInputError(
+            f"Unknown time zone '{time_zone}'. Use an IANA name such as 'Asia/Amman'."
+        ) from None
+    back = (_utc_now() + datetime.timedelta(minutes=minutes)).astimezone(tz)
+    # %-I is not portable (it fails on Windows), so strip the hour's zero by hand.
+    return text.replace(_BACK_AT_PLACEHOLDER, back.strftime("%I:%M %p").lstrip("0"))
+
+
+@server.tool(
+    title="Set Chat Status",
+    annotations=ToolAnnotations(
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=True,
+    ),
+)
+@require_google_service("chat", "chat_availability")
+@handle_http_errors("set_chat_status", service_type="chat")
+async def set_chat_status(
+    service,
+    user_google_email: str,
+    text: str,
+    emoji_unicode: str,
+    minutes: int,
+    do_not_disturb: bool = False,
+    time_zone: str = "UTC",
+) -> str:
+    """
+    Sets the signed-in user's own Google Chat custom status. Google clears it by
+    itself after `minutes`, so nothing is left on if the user forgets.
+
+    Args:
+        text: Status text, at most 64 characters. "{back_at}" is replaced with the
+            local time the status ends, e.g. "On a break, back at {back_at}".
+        emoji_unicode: Literal Unicode emoji character shown with the status (not a shortcode).
+        minutes: How long the status lasts. At least 1.
+        do_not_disturb: Also turn on Do not disturb for the same duration.
+        time_zone: IANA time zone used to write {back_at}, e.g. "Asia/Amman".
+
+    Returns:
+        str: Confirmation with the status as Chat shows it.
+    """
+    logger.info(
+        f"[set_chat_status] Email: '{user_google_email}', Minutes: {minutes}, DND: {do_not_disturb}"
+    )
+
+    if minutes < 1:
+        raise UserInputError(f"minutes must be at least 1, got {minutes}.")
+    status_text = _fill_back_at(text, minutes, time_zone)
+    if len(status_text) > _CUSTOM_STATUS_MAX_LENGTH:
+        raise UserInputError(
+            f"Status text is {len(status_text)} characters; Chat allows at most "
+            f"{_CUSTOM_STATUS_MAX_LENGTH}: '{status_text}'"
+        )
+
+    ttl = f"{minutes * 60}s"
+    availability = service.users().availability()
+
+    if do_not_disturb:
+        await asyncio.to_thread(
+            availability.markAsDoNotDisturb(
+                name=_OWN_AVAILABILITY, body={"ttl": ttl}
+            ).execute
+        )
+
+    await asyncio.to_thread(
+        availability.patch(
+            name=_OWN_AVAILABILITY,
+            updateMask="custom_status",
+            body={
+                "customStatus": {
+                    "text": status_text,
+                    "emoji": {"unicode": emoji_unicode},
+                    "ttl": ttl,
+                }
+            },
+        ).execute
+    )
+
+    msg = (
+        f"Chat status set for {user_google_email}: {emoji_unicode} {status_text}. "
+        f"It clears itself in {minutes} min."
+    )
+    if do_not_disturb:
+        msg += " Do not disturb is on for the same time."
+    return msg
+
+
+@server.tool(
+    title="Clear Chat Status",
+    annotations=ToolAnnotations(
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=True,
+    ),
+)
+@require_google_service("chat", "chat_availability")
+@handle_http_errors("clear_chat_status", service_type="chat")
+async def clear_chat_status(
+    service,
+    user_google_email: str,
+) -> str:
+    """
+    Clears the signed-in user's own Google Chat custom status, and ends Do not
+    disturb if it is on.
+
+    Returns:
+        str: Confirmation of what was cleared.
+    """
+    logger.info(f"[clear_chat_status] Email: '{user_google_email}'")
+
+    availability = service.users().availability()
+    current = await asyncio.to_thread(availability.get(name=_OWN_AVAILABILITY).execute)
+    ended_dnd = current.get("state") == "DO_NOT_DISTURB"
+    if ended_dnd:
+        await asyncio.to_thread(
+            availability.markAsActive(
+                name=_OWN_AVAILABILITY, body={"ttl": _END_DO_NOT_DISTURB_TTL}
+            ).execute
+        )
+
+    await asyncio.to_thread(
+        availability.patch(
+            name=_OWN_AVAILABILITY, updateMask="custom_status", body={}
+        ).execute
+    )
+
+    msg = f"Chat status cleared for {user_google_email}."
+    if ended_dnd:
+        msg += " Do not disturb ended."
+    return msg
