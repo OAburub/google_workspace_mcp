@@ -70,9 +70,19 @@ async def list_spaces(
     user_google_email: str,
     page_size: int = 100,
     space_type: str = "all",  # "all", "room", "dm"
+    resolve_dm_names: bool = True,
+    max_dm_spaces: Optional[int] = None,
 ) -> str:
     """
     Lists Google Chat spaces (rooms and direct messages) accessible to the user.
+
+    Direct messages and unnamed group chats are always named after their members.
+
+    Args:
+        page_size: Maximum number of spaces to request from Google Chat.
+        space_type: Which space type to list: "all", "room", or "dm".
+        resolve_dm_names: Deprecated and ignored; kept so existing callers keep working.
+        max_dm_spaces: Deprecated and ignored; kept so existing callers keep working.
 
     Returns:
         str: A formatted list of Google Chat spaces accessible to the user.

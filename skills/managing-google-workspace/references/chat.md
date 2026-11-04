@@ -14,6 +14,8 @@ Lists Google Chat spaces (rooms and direct messages) accessible to the user.
 | user_google_email | string | yes | | |
 | page_size | integer | no | 100 | |
 | space_type | string | no | "all" | |
+| resolve_dm_names | boolean | no | true | Deprecated and ignored: DMs are always named. Kept so existing callers keep working. |
+| max_dm_spaces | integer | no | null | Deprecated and ignored. Kept so existing callers keep working. |
 
 ---
 
@@ -107,7 +109,7 @@ Clears your custom status, and ends Do not disturb if it is on.
 
 **Space IDs**: Call `list_spaces` first to discover available spaces and their IDs. You need the space ID for all message operations.
 
-**Unnamed spaces**: Direct messages and group chats have no name of their own, so `list_spaces`, `get_messages` and `search_messages` label them after up to three other members (e.g. `Alice Smith, Bob Jones and 2 others`). Naming needs the `chat.memberships.readonly` and `contacts.readonly` scopes (requested with the Chat scopes) and the People API enabled in the Google Cloud project. Tokens granted before `chat.memberships.readonly` was added keep working without re-consent. If the member lookup fails, for example because that scope is missing, the label falls back to `Direct message` or `Group chat`; if only a member's name cannot be resolved, their user ID (e.g. `users/123`) is shown in its place.
+**Unnamed spaces**: Direct messages and group chats have no name of their own, so `list_spaces`, `get_messages` and `search_messages` label them after up to three other members (e.g. `Alice Smith, Bob Jones and 2 others`). Naming needs the `chat.memberships.readonly` and `contacts.readonly` scopes (requested with the Chat scopes) and the People API enabled in the Google Cloud project. Tokens granted before `chat.memberships.readonly` was added keep working without re-consent. If the member lookup fails, for example because that scope is missing, the label falls back to `Direct message` or `Group chat`; if only a member's name cannot be resolved, their user ID (e.g. `users/123`) is shown in its place. Coworkers who are not in your contacts are looked up in the Workspace directory when the `directory.readonly` scope has been granted (this server carries that as a local addition to upstream); without it they stay as a user ID.
 
 **Message resource names**: Messages are identified by their full resource name in the format `spaces/SPACE_ID/messages/MESSAGE_ID`. This is the value expected by `create_reaction` and `download_chat_attachment`.
 
