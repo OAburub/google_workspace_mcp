@@ -26,6 +26,13 @@ _MAX_CONSECUTIVE_MEMBER_LOOKUP_FAILURES = 2
 _SCOPE_ERROR_REASON = "ACCESS_TOKEN_SCOPE_INSUFFICIENT"
 _SEARCH_MESSAGES_RETRY_BASE_DELAY_SECONDS = 1
 
+# Workspace directory names (users/{id} -> display name): the fallback for coworkers
+# who are not in the caller's personal contacts. Filled lazily from the People API
+# directory (needs the directory.readonly scope) and kept for the life of the process.
+_domain_directory_names: Dict[str, str] = {}
+_domain_directory_loaded = False
+_DIRECTORY_PAGE_SIZE = 1000
+
 
 def _cache_sender(user_id: str, name: str) -> None:
     """Store a resolved sender name, evicting oldest entries if cache is full."""
@@ -81,6 +88,49 @@ async def _resolve_sender(people_service, sender_obj: dict) -> str:
     return user_id
 
 
+async def _get_domain_directory_names(people_service) -> Dict[str, str]:
+    """Return users/{id} -> display name for the caller's Workspace directory.
+
+    People getBatchGet only names people who are in the caller's contacts. This is the
+    fallback for the rest of the domain. It needs the directory.readonly scope; on any
+    failure (scope not granted, directory sharing off, network) it returns what is
+    already cached and never raises, so the label simply stays as the raw user id.
+    """
+    global _domain_directory_loaded
+    if _domain_directory_loaded:
+        return _domain_directory_names
+    loaded: Dict[str, str] = {}
+    page_token = None
+    try:
+        while True:
+            kwargs = {
+                "readMask": "names,emailAddresses",
+                "sources": ["DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE"],
+                "pageSize": _DIRECTORY_PAGE_SIZE,
+            }
+            if page_token:
+                kwargs["pageToken"] = page_token
+            response = await asyncio.to_thread(
+                people_service.people().listDirectoryPeople(**kwargs).execute
+            )
+            for person in response.get("people", []):
+                resource_name = person.get("resourceName")
+                name = _person_name(person)
+                if resource_name and name:
+                    loaded[resource_name.replace("people/", "users/", 1)] = name
+            page_token = response.get("nextPageToken")
+            if not page_token:
+                break
+    except Exception as e:
+        logger.debug(f"Workspace directory lookup failed: {e}")
+        return _domain_directory_names
+    # An empty listing can mean directory sharing is still propagating: do not cache it.
+    if loaded:
+        _domain_directory_names.update(loaded)
+        _domain_directory_loaded = True
+    return _domain_directory_names
+
+
 async def _lookup_people_names(people_service, user_ids: List[str]) -> Dict[str, str]:
     """Resolve Chat user ids to display names with batched People API calls."""
     names = {}
@@ -111,6 +161,17 @@ async def _lookup_people_names(people_service, user_ids: List[str]) -> Dict[str,
             requested = entry.get("requestedResourceName")
             if name and requested:
                 user_id = requested.replace("people/", "users/", 1)
+                names[user_id] = name
+                _cache_sender(user_id, name)
+
+    # Coworkers outside the caller's contacts come back from getBatchGet without a
+    # name: try the Workspace directory for those.
+    unresolved = [user_id for user_id in missing if user_id not in names]
+    if unresolved:
+        directory = await _get_domain_directory_names(people_service)
+        for user_id in unresolved:
+            name = directory.get(user_id)
+            if name:
                 names[user_id] = name
                 _cache_sender(user_id, name)
     return names
