@@ -243,6 +243,8 @@ For parameters: [references/contacts.md](references/contacts.md)
 | Edit a message already sent | `send_message` (`message_name`) |
 | React to message | `create_reaction` |
 | Download attachment | `download_chat_attachment` |
+| Set my own status | `set_chat_status` |
+| Clear my own status | `clear_chat_status` |
 
 For parameters: [references/chat.md](references/chat.md)
 

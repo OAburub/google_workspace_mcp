@@ -17,6 +17,7 @@ from auth.scopes import (
     BASE_SCOPES,
     CALENDAR_READONLY_SCOPE,
     CALENDAR_SCOPE,
+    CHAT_USERS_AVAILABILITY_SCOPE,
     CONTACTS_READONLY_SCOPE,
     CONTACTS_SCOPE,
     DRIVE_FILE_SCOPE,
@@ -133,6 +134,12 @@ class TestReadOnlyScopes:
 def _chat_readonly_permission():
     set_permissions({"chat": "readonly"})
 
+    def test_chat_readonly_excludes_availability_scope(self):
+        """Setting your own Chat status is a write, so read-only mode leaves it out."""
+        set_read_only(True)
+        scopes = get_scopes_for_tools(["chat"])
+        assert CHAT_USERS_AVAILABILITY_SCOPE not in scopes
+
 
 class TestChatScopes:
     """Every Chat read tool can authenticate with the scopes chat requests."""
@@ -156,6 +163,11 @@ class TestChatScopes:
         assert has_required_scopes(
             get_scopes_for_tools(["chat"]), tool._required_google_scopes
         )
+
+    def test_chat_includes_availability_scope(self):
+        """set_chat_status and clear_chat_status need chat.users.availability."""
+        scopes = get_scopes_for_tools(["chat"])
+        assert CHAT_USERS_AVAILABILITY_SCOPE in scopes
 
 
 class TestHasRequiredScopes:
@@ -276,3 +288,11 @@ class TestGranularPermissionsScopes:
         with_permissions = get_scopes_for_tools(["drive"])
         assert GMAIL_READONLY_SCOPE in with_permissions
         assert DRIVE_READONLY_SCOPE not in with_permissions
+
+    def test_chat_availability_scope_is_full_permission_only(self):
+        assert CHAT_USERS_AVAILABILITY_SCOPE in get_scopes_for_permission(
+            "chat", "full"
+        )
+        assert CHAT_USERS_AVAILABILITY_SCOPE not in get_scopes_for_permission(
+            "chat", "readonly"
+        )

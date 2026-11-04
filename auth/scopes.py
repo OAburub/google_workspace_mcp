@@ -45,6 +45,9 @@ CHAT_SPACES_READONLY_SCOPE = "https://www.googleapis.com/auth/chat.spaces.readon
 CHAT_MEMBERSHIPS_READONLY_SCOPE = (
     "https://www.googleapis.com/auth/chat.memberships.readonly"
 )
+CHAT_USERS_AVAILABILITY_SCOPE = (
+    "https://www.googleapis.com/auth/chat.users.availability"
+)
 
 # Google Sheets API scopes
 SHEETS_READONLY_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly"
@@ -68,6 +71,9 @@ TASKS_READONLY_SCOPE = "https://www.googleapis.com/auth/tasks.readonly"
 # Google Contacts (People API) scopes
 CONTACTS_SCOPE = "https://www.googleapis.com/auth/contacts"
 CONTACTS_READONLY_SCOPE = "https://www.googleapis.com/auth/contacts.readonly"
+
+# People API directory (Workspace coworkers who are not in the caller's contacts)
+DIRECTORY_READONLY_SCOPE = "https://www.googleapis.com/auth/directory.readonly"
 
 # Google Custom Search API scope
 CUSTOM_SEARCH_SCOPE = "https://www.googleapis.com/auth/cse"
@@ -168,7 +174,9 @@ CHAT_SCOPES = [
     CHAT_SPACES_SCOPE,
     CHAT_SPACES_READONLY_SCOPE,
     CHAT_MEMBERSHIPS_READONLY_SCOPE,  # Names DMs after their members
+    CHAT_USERS_AVAILABILITY_SCOPE,  # set_chat_status / clear_chat_status
     CONTACTS_READONLY_SCOPE,  # Resolves sender and member names via People API
+    DIRECTORY_READONLY_SCOPE,  # Names coworkers who are not in the caller's contacts
 ]
 
 SHEETS_SCOPES = [
