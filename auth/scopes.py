@@ -72,9 +72,7 @@ TASKS_READONLY_SCOPE = "https://www.googleapis.com/auth/tasks.readonly"
 CONTACTS_SCOPE = "https://www.googleapis.com/auth/contacts"
 CONTACTS_READONLY_SCOPE = "https://www.googleapis.com/auth/contacts.readonly"
 
-# Google People Directory scope — resolve domain coworkers' names by user ID
-# (needed to turn Chat users/{id} into a display name for people who are not in
-# the caller's personal contacts).
+# People API directory (Workspace coworkers who are not in the caller's contacts)
 DIRECTORY_READONLY_SCOPE = "https://www.googleapis.com/auth/directory.readonly"
 
 # Google Custom Search API scope
@@ -175,13 +173,18 @@ CHAT_SCOPES = [
     CHAT_WRITE_SCOPE,
     CHAT_SPACES_SCOPE,
     CHAT_SPACES_READONLY_SCOPE,
-    CHAT_MEMBERSHIPS_READONLY_SCOPE,
-    CHAT_USERS_AVAILABILITY_SCOPE,
-    CONTACTS_READONLY_SCOPE,
-    DIRECTORY_READONLY_SCOPE,
+    CHAT_MEMBERSHIPS_READONLY_SCOPE,  # Names DMs after their members
+    CHAT_USERS_AVAILABILITY_SCOPE,  # set_chat_status / clear_chat_status
+    CONTACTS_READONLY_SCOPE,  # Resolves sender and member names via People API
+    DIRECTORY_READONLY_SCOPE,  # Names coworkers who are not in the caller's contacts
 ]
 
-SHEETS_SCOPES = [SHEETS_READONLY_SCOPE, SHEETS_WRITE_SCOPE, DRIVE_READONLY_SCOPE]
+SHEETS_SCOPES = [
+    SHEETS_READONLY_SCOPE,
+    SHEETS_WRITE_SCOPE,
+    DRIVE_READONLY_SCOPE,
+    DRIVE_FILE_SCOPE,  # create_spreadsheet places new files in a folder
+]
 
 FORMS_SCOPES = [
     FORMS_BODY_SCOPE,
@@ -202,11 +205,11 @@ SCRIPT_SCOPES = [
     SCRIPT_PROJECTS_READONLY_SCOPE,
     SCRIPT_DEPLOYMENTS_SCOPE,
     SCRIPT_DEPLOYMENTS_READONLY_SCOPE,
-    SCRIPT_PROCESSES_READONLY_SCOPE,  # Required for list_script_processes
-    SCRIPT_METRICS_SCOPE,  # Required for get_script_metrics
+    SCRIPT_PROCESSES_READONLY_SCOPE,  # Required for get_script_activity (processes)
+    SCRIPT_METRICS_SCOPE,  # Required for get_script_activity (metrics)
     SCRIPT_EXTERNAL_REQUEST_SCOPE,  # Required for scripts.run (execution API)
     SCRIPT_SCRIPTAPP_SCOPE,  # Required for scripts.run (execution API)
-    DRIVE_FILE_SCOPE,  # Required for list/delete script projects (uses Drive API)
+    DRIVE_SCOPE,  # Required for manage_script_project delete (uses Drive API)
 ]
 
 # Tool-to-scopes mapping
@@ -237,7 +240,6 @@ TOOL_READONLY_SCOPES_MAP = {
         CHAT_SPACES_READONLY_SCOPE,
         CHAT_MEMBERSHIPS_READONLY_SCOPE,
         CONTACTS_READONLY_SCOPE,
-        DIRECTORY_READONLY_SCOPE,
     ],
     "forms": [FORMS_BODY_READONLY_SCOPE, FORMS_RESPONSES_READONLY_SCOPE],
     "slides": [SLIDES_READONLY_SCOPE],
@@ -263,7 +265,8 @@ def set_enabled_tools(enabled_tools):
     """
     global _ENABLED_TOOLS
     _ENABLED_TOOLS = enabled_tools
-    logger.info(f"Scope management active for {len(enabled_tools)} services")
+    # Debug level: the startup screen already reports the loaded service count.
+    logger.debug(f"Scope management active for {len(enabled_tools)} services")
 
 
 # Global variable to store read-only mode (set by main.py)
@@ -279,7 +282,8 @@ def set_read_only(enabled: bool):
     """
     global _READ_ONLY_MODE
     _READ_ONLY_MODE = enabled
-    logger.info(f"Read-only mode set to: {enabled}")
+    # Debug level: the startup banner already flags read-only mode.
+    logger.debug(f"Read-only mode set to: {enabled}")
 
 
 def is_read_only_mode() -> bool:
