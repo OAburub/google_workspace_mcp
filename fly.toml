@@ -1,0 +1,30 @@
+app = "tajah-gws-mcp"
+primary_region = "sjc"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8000"
+  MCP_ENABLE_OAUTH21 = "true"
+  WORKSPACE_MCP_OAUTH_PROXY_STORAGE_BACKEND = "disk"
+  WORKSPACE_MCP_OAUTH_PROXY_DISK_DIRECTORY = "/data/oauth-proxy"
+  GOOGLE_MCP_CREDENTIALS_DIR = "/data/creds"
+  WORKSPACE_EXTERNAL_URL = "https://gws.mcp.tajahlabs.com"
+  WORKSPACE_MCP_BASE_URI = "http://localhost"
+
+[mounts]
+  source = "gws_mcp_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
