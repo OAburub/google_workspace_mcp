@@ -187,3 +187,80 @@ async def test_dm_with_non_contact_coworker_is_labelled_with_the_directory_name(
     labels = await _name_spaces(chat_service, service, spaces)
 
     assert labels == {"spaces/DM1": "Alice Smith"}
+
+
+def _chat_service(members):
+    """members: list of (user_id, display_name or None, type)."""
+    chat_service = Mock()
+    memberships = []
+    for user_id, display_name, member_type in members:
+        member = {"name": f"users/{user_id}", "type": member_type}
+        if display_name is not None:
+            member["displayName"] = display_name
+        memberships.append({"member": member})
+    chat_service.spaces.return_value.members.return_value.list.side_effect = (
+        lambda parent, pageSize: _request({"memberships": memberships})
+    )
+    return chat_service
+
+
+@pytest.mark.asyncio
+async def test_member_that_people_and_directory_cannot_name_uses_the_membership_name():
+    # A former coworker or external account: not in contacts, not in the directory.
+    service, _ = _people_service(directory_error=_http_error(403))
+    chat_service = _chat_service(
+        [("100", "Me", "HUMAN"), ("200", "Former Coworker", "HUMAN")]
+    )
+    spaces = [{"name": "spaces/DM1", "spaceType": "DIRECT_MESSAGE"}]
+
+    labels = await _name_spaces(chat_service, service, spaces)
+
+    assert labels == {"spaces/DM1": "Former Coworker"}
+
+
+@pytest.mark.asyncio
+async def test_people_name_wins_over_the_membership_name():
+    service, _ = _people_service(contacts={"200": "Alice (my contact)"})
+    chat_service = _chat_service(
+        [("100", "Me", "HUMAN"), ("200", "Alice Smith", "HUMAN")]
+    )
+    spaces = [{"name": "spaces/DM1", "spaceType": "DIRECT_MESSAGE"}]
+
+    labels = await _name_spaces(chat_service, service, spaces)
+
+    assert labels == {"spaces/DM1": "Alice (my contact)"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("display_name", [None, "", "   "])
+async def test_member_with_no_usable_name_anywhere_keeps_the_user_id(display_name):
+    service, _ = _people_service(directory_error=_http_error(403))
+    chat_service = _chat_service(
+        [("100", "Me", "HUMAN"), ("200", display_name, "HUMAN")]
+    )
+    spaces = [{"name": "spaces/DM1", "spaceType": "DIRECT_MESSAGE"}]
+
+    labels = await _name_spaces(chat_service, service, spaces)
+
+    assert labels == {"spaces/DM1": "users/200"}
+
+
+@pytest.mark.asyncio
+async def test_group_chat_mixes_people_membership_and_raw_id_names():
+    service, _ = _people_service(
+        contacts={"200": "Alice Smith"}, directory_error=_http_error(403)
+    )
+    chat_service = _chat_service(
+        [
+            ("100", "Me", "HUMAN"),
+            ("200", "ignored: People wins", "HUMAN"),
+            ("300", "Bob External", "HUMAN"),
+            ("400", None, "HUMAN"),
+            ("app", "Some Bot", "BOT"),
+        ]
+    )
+    spaces = [{"name": "spaces/GC1", "spaceType": "GROUP_CHAT"}]
+
+    labels = await _name_spaces(chat_service, service, spaces)
+
+    assert labels == {"spaces/GC1": "Alice Smith, Bob External, users/400"}

@@ -234,6 +234,10 @@ async def _name_spaces(
     me_id = me["resourceName"].replace("people/", "users/", 1)
 
     others_by_space = {}
+    # The membership itself carries the member's display name for user-authenticated
+    # calls (internal and external users). It is the fallback for people the People
+    # API cannot name, e.g. former coworkers and external accounts.
+    member_display_names: Dict[str, str] = {}
     consecutive_failures = 0
     for space_name in unnamed:
         try:
@@ -257,6 +261,9 @@ async def _name_spaces(
             member = membership.get("member", {})
             if member.get("type") == "HUMAN" and member.get("name") != me_id:
                 others.append(member.get("name"))
+                display_name = _none_if_blank(member.get("displayName"))
+                if display_name:
+                    member_display_names[member["name"]] = display_name
         if others:
             others_by_space[space_name] = others
 
@@ -269,7 +276,10 @@ async def _name_spaces(
 
     for space_name, others in others_by_space.items():
         shown = others[:_SPACE_NAME_MAX_MEMBERS]
-        label = ", ".join(people_names.get(user_id, user_id) for user_id in shown)
+        label = ", ".join(
+            people_names.get(user_id) or member_display_names.get(user_id) or user_id
+            for user_id in shown
+        )
         remaining = len(others) - len(shown)
         if remaining:
             label += f" and {remaining} other{'s' if remaining > 1 else ''}"
